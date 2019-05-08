@@ -1,11 +1,9 @@
 const moment = require('moment');
 const AWS = require("aws-sdk");
+const stats = require("stats-lite")
+
 AWS.config.update({ region: 'eu-west-2', accessKeyId: '***REMOVED***', secretAccessKey: '***REMOVED***' });
 const ddb = new AWS.DynamoDB.DocumentClient();
-
-var tickers = ['@Apple', '@Nike', '@facebook', '@Nintendo', '@Tesco', '@Starbucks',
-    '@LFC', '@warriors', '@Huawei', '@BAPEOFFICIAL', '@netflix', '@Tesla'];
-// var tickers = ['@Apple', '@Nike'];
 
 function dailyProcess(ticker, begin, end) {
     return new Promise(async (resolve, reject) => {
@@ -25,10 +23,6 @@ function dailyProcess(ticker, begin, end) {
         };
 
         try {
-            // TODO rolling window
-            // for (var i = 0; i < 23; i++) {
-
-            // }
             var result = await ddb.query(params).promise();
             tweets.push(...result.Items);
 
@@ -42,90 +36,69 @@ function dailyProcess(ticker, begin, end) {
                 console.log('ticker', ticker, 'begin', begin.toString(), 'end', end.toString(), 'count', result.Items.length, 'LastEvaluatedKey', result['LastEvaluatedKey'])
             }
 
-            resolve({ 'tweets': tweets, 'date': begin });
+            if (tweets.length == 0) {
+                return
+            }
+
+            var totalScore = 0;
+            var sentiments = new Array();
+
+            tweets.forEach(tweet => {
+                totalScore += tweet['sentiment'];
+                sentiments.push(tweet['sentiment']);
+            })
+
+            var params = {
+                TableName: 'daily-stats',
+                Item: {
+                    'ticker': ticker,
+                    'average': totalScore / tweets.length,
+                    'date': begin.toString(),
+                    "count": tweets.length,
+                    'stdev': stats.stdev(sentiments),
+                    'timestamp': begin.unix() * 1000
+                }
+            };
+
+            const response = await ddb.put(params).promise();
+
+            console.log('write daily stats', begin.toString(), params.Item, 'response', response)
+
+            resolve();
         } catch (e) {
             reject(e);
         }
     });
 }
 
-function brandProcess(ticker, minDate, maxDate) {
-    return new Promise(async (resolve, reject) => {
-        var promises = new Array();
+async function brandProcess(ticker, minDate, maxDate) {
+    var promises = new Array();
 
-        do {
-            let begin = moment(minDate);
-            let end = moment(minDate.add(1, 'days'));
+    do {
+        let begin = moment(minDate);
+        let end = moment(minDate.add(1, 'days'));
 
-            console.log('request ticker', ticker, 'min time', minDate.toString(), 'max time', maxDate.toString());
+        console.log('request ticker', ticker, 'min time', minDate.toString(), 'max time', maxDate.toString());
 
-            promises.push(dailyProcess(ticker, begin, end));
-        } while (maxDate.isAfter(minDate));
+        dailyProcess(ticker, begin, end);
+    } while (maxDate.isAfter(minDate));
 
-        var timeline = new Array();
-
-        try {
-            const results = await Promise.all(promises);
-
-            results.forEach(date => {
-                console.log('result length for', date['date'].toString(), 'is', date['tweets'].length)
-
-                var totalScore = 0;
-
-                date['tweets'].forEach(tweet => {
-                    totalScore += tweet['sentiment'];
-                })
-
-                timeline.push({
-                    'ticker': ticker,
-                    'average': totalScore / date['tweets'].length,
-                    'date': date['date'],
-                    "count": date['tweets'].length
-                })
-            })
-
-            resolve(timeline);
-        } catch (e) {
-            reject(e);
-        }
-    })
+    try {
+        await Promise.all(promises);
+    } catch (e) {
+        console.log('brand process failed', e)
+    }
 }
 
 promises = new Array();
 
-tickers.forEach(ticker => {
-    let minDate = moment('20190402');
-    let maxDate = moment('20190506');
+var ticker = process.argv[2];
+let minDate = moment('20190403');
+let maxDate = moment('20190506');
 
-    // let minDate = moment('20190411');
-    // let maxDate = moment('20190412');
-    promises.push(brandProcess(ticker, minDate, maxDate));
+// let minDate = moment('20190411');
+// let maxDate = moment('20190412');
+brandProcess(ticker, minDate, maxDate).then(() => {
+}).catch(e => {
+    console.log('brand process failed', e)
 });
-
-Promise.all(promises).then(results => {
-    results.forEach(async (timeline) => {
-        console.log('timeline', timeline);
-
-        var params = {
-            RequestItems: {
-                "daily-stats": []
-            }
-        }
-        timeline.forEach(dailyStats => {
-            dailyStats['timestamp'] = dailyStats['date'].unix() * 1000
-            dailyStats['date'] = dailyStats['date'].toString()
-            params.RequestItems['daily-stats'].push({
-                PutRequest: {
-                    Item: dailyStats
-                }
-            })
-        });
-
-        try {
-            const response = await ddb.batchWrite(params).promise();
-            console.log('writing timeline', timeline[0].ticker, 'response', response)
-        } catch (e) {
-            console.log('err writing timeline', timeline, e);
-        }
-    });
-})

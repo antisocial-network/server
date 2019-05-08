@@ -1,10 +1,12 @@
 const moment = require('moment');
 const AWS = require("aws-sdk");
+const stats = require("stats-lite")
+
 AWS.config.update({ region: 'eu-west-2', accessKeyId: '***REMOVED***', secretAccessKey: '***REMOVED***' });
 const ddb = new AWS.DynamoDB.DocumentClient();
 
 let minDate = moment('20190403');
-let maxDate = moment('20190507');
+let maxDate = moment('20190412');
 // let minDate = moment('20190410');
 // let maxDate = moment('20190411');
 var ticker = process.argv[2];
@@ -52,12 +54,15 @@ async function rollingWindow() {
                 }
 
                 var totalScore = 0;
+                var sentiments = new Array();
 
                 tweets.forEach(tweet => {
                     totalScore += tweet['sentiment'];
+                    sentiments.push(tweet['sentiment']);
                 })
 
                 const average = tweets.length == 0 ? 0 : totalScore / tweets.length;
+                const stdev = tweets.length == 0 ? 0 : stats.stdev(sentiments);
 
                 batchParams.RequestItems['rolling-window-stats'].push({
                     PutRequest: {
@@ -67,7 +72,8 @@ async function rollingWindow() {
                             'datestamp': minDate.unix() * 1000,
                             'date': minDate.toString(),
                             'timestamp': minTime.unix() * 1000,
-                            "count": tweets.length
+                            "count": tweets.length,
+                            "stdev": stdev
                         }
                     }
                 })
