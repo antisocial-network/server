@@ -2,6 +2,57 @@ const moment = require('moment');
 const AWS = require("aws-sdk");
 const ddb = new AWS.DynamoDB.DocumentClient();
 
+const brands = {
+    '@Apple': {
+        'name': 'Apple Inc.',
+        'stock-ticker': 'AAPL',
+    },
+    '@Nike': {
+        'name': 'Nike, Inc.',
+        'stock-ticker': 'NKE'
+    },
+    '@facebook': {
+        'name': 'Facebook Inc.',
+        'stock-ticker': 'FB'
+    },
+    '@Nintendo': {
+        'name': 'Nintendo',
+        'stock-ticker': 'NTDOY'
+    },
+    '@Tesco': {
+        'name': 'Tesco plc',
+        'stock-ticker': 'TSCO'
+    },
+    '@Starbucks': {
+        'name': 'Starbucks Corporation',
+        'stock-ticker': 'SBUX',
+    },
+    '@LFC': {
+        'name': 'Liverpool Football Club',
+        'stock-ticker': 'n/a'
+    },
+    '@warriors': {
+        'name': 'Golden State Warriors',
+        'stock-ticker': 'BGSWX'
+    },
+    '@Huawei': {
+        'name': 'Huawei Technologies Co. Ltd.',
+        'stock-ticker': 'n/a'
+    },
+    '@BAPEOFFICIAL': {
+        'name': 'A Bathing Ape',
+        'stock-ticker': 'n/a'
+    },
+    '@netflix': {
+        'name': 'Netflix',
+        'stock-ticker': 'NFLX',
+    },
+    '@Tesla': {
+        'name': 'Tesla, Inc.',
+        'stock-ticker': 'TSLA'
+    }
+}
+
 exports.timelineHandler = async (event) => {
     var ticker = event["queryStringParameters"]['ticker'];
     let minTime = moment(event["queryStringParameters"]['min_time']);
@@ -104,7 +155,8 @@ exports.timelineHandler = async (event) => {
             body: JSON.stringify({
                 timeline: timeline,
                 news: news,
-                tweets: tweets
+                tweets: tweets,
+                brand: brands[ticker]
             })
         };
     } catch (e) {
